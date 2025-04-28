@@ -31,6 +31,22 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    guint result = g_bus_request_name_sync(connection,
+        "org.mu.Update",
+        G_BUS_NAME_OWNER_FLAGS_NONE,
+        NULL,
+        &error);
+
+    if (result != G_BUS_NAME_OWNER_FLAGS_NONE) {
+        g_print("Successfully claimed D-Bus name: org.mu.Update\n");
+    } 
+    else {
+        g_printerr("Failed to claim D-Bus name: %s\n", error ? error->message : "Unknown error");
+        g_clear_error(&error);
+        return 1;
+    }
+
+
     // Create skeleton object
     skeleton = mu_update_org_mu_update_skeleton_new();
 
