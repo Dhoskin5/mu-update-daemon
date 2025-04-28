@@ -1,74 +1,64 @@
 #include <gio/gio.h>
 #include "mu_update.h"
 
+// Forward declaration
+static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
+                                         GDBusMethodInvocation *invocation,
+                                         const gchar *verified_hash);
+
+// Callback when the bus is acquired
+static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpointer user_data) {
+    MuUpdateOrgMuUpdate *skeleton = mu_update_org_mu_update_skeleton_new();
+
+    g_signal_connect(skeleton, "handle-trigger-update", G_CALLBACK(on_handle_trigger_update), NULL);
+
+    if (!g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/mu/Update", NULL)) {
+        g_printerr("Failed to export D-Bus interface\n");
+        exit(1);
+    }
+
+    g_print("mu-update-daemon: D-Bus interface exported and ready.\n");
+}
+
+// Handler for TriggerUpdate method call
 static gboolean
-on_handle_trigger_update(MuUpdateOrgMuUpdate *skeleton,
+on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
                          GDBusMethodInvocation *invocation,
                          const gchar *verified_hash)
 {
     g_print("Received TriggerUpdate with hash: %s\n", verified_hash);
 
-    // TODO: Validate hash and perform update logic here
     gboolean success = TRUE;
     const gchar *status_message = "Update applied successfully.";
 
-    mu_update_org_mu_update_complete_trigger_update(skeleton, invocation, success, status_message);
+    // No cast needed here!
+    mu_update_org_mu_update_complete_trigger_update(
+        (MuUpdateOrgMuUpdate *)skeleton,
+        invocation,
+        success,
+        status_message
+    );
     return TRUE;
 }
 
-int main(int argc, char *argv[])
-{
-    GMainLoop *loop;
-    GDBusConnection *connection;
-    GError *error = NULL;
-    MuUpdateOrgMuUpdate *skeleton;
-
-    // Connect to the system bus
-    connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
-    if (!connection) {
-        g_printerr("Failed to connect to system bus: %s\n", error->message);
-        g_clear_error(&error);
-        return 1;
-    }
-
-    guint result = g_bus_request_name_sync(connection,
+int main(int argc, char *argv[]) {
+    guint owner_id = g_bus_own_name(
+        G_BUS_TYPE_SYSTEM,
         "org.mu.Update",
         G_BUS_NAME_OWNER_FLAGS_NONE,
+        on_bus_acquired,
         NULL,
-        &error);
+        NULL,
+        NULL,
+        NULL
+    );
 
-    if (result != G_BUS_NAME_OWNER_FLAGS_NONE) {
-        g_print("Successfully claimed D-Bus name: org.mu.Update\n");
-    } 
-    else {
-        g_printerr("Failed to claim D-Bus name: %s\n", error ? error->message : "Unknown error");
-        g_clear_error(&error);
-        return 1;
-    }
+    g_print("mu-update-daemon: Running...\n");
 
-
-    // Create skeleton object
-    skeleton = mu_update_org_mu_update_skeleton_new();
-
-    // Attach handler
-    g_signal_connect(skeleton, "handle-trigger-update", G_CALLBACK(on_handle_trigger_update), NULL);
-
-    // Export the object at /org/mu/Update
-    g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/mu/Update", &error);
-    if (error) {
-        g_printerr("Failed to export object: %s\n", error->message);
-        g_clear_error(&error);
-        return 1;
-    }
-
-    g_print("mu-update-daemon is running...\n");
-
-    loop = g_main_loop_new(NULL, FALSE);
+    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(loop);
 
-    // Cleanup
-    g_object_unref(skeleton);
+    g_bus_unown_name(owner_id);
     g_main_loop_unref(loop);
     return 0;
 }
-
