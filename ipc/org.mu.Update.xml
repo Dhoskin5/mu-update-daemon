@@ -3,7 +3,6 @@
 <node>
   <interface name="org.mu.Update">
     <method name="TriggerUpdate">
-      <arg name="verified_hash" type="s" direction="in"/>
       <arg name="success" type="b" direction="out"/>
       <arg name="status_message" type="s" direction="out"/>
     </method>

@@ -3,8 +3,7 @@
 
 // Forward declaration
 static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
-                                         GDBusMethodInvocation *invocation,
-                                         const gchar *verified_hash);
+                                         GDBusMethodInvocation *invocation);
 
 // Callback when the bus is acquired
 static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpointer user_data) {
@@ -23,10 +22,9 @@ static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpoi
 // Handler for TriggerUpdate method call
 static gboolean
 on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
-                         GDBusMethodInvocation *invocation,
-                         const gchar *verified_hash)
+                         GDBusMethodInvocation *invocation)
 {
-    g_print("Received TriggerUpdate with hash: %s\n", verified_hash);
+    g_print("Received TriggerUpdate with hash\n");
 
     gboolean success = TRUE;
     const gchar *status_message = "Update applied successfully.";
