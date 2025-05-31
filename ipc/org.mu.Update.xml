@@ -3,6 +3,7 @@
 <node>
   <interface name="org.mu.Update">
     <method name="TriggerUpdate">
+      <arg type="s" name="inbox_path" direction="in"/>
       <arg name="success" type="b" direction="out"/>
       <arg name="status_message" type="s" direction="out"/>
     </method>
