@@ -37,6 +37,7 @@ static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
 	const gchar *filename;
 	gboolean verified = FALSE;
 	gboolean success = FALSE;
+	gchar *verified_key = NULL;
 
 	while ((filename = g_dir_read_name(dir)) && !verified)
 	{
@@ -47,7 +48,11 @@ static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
 		gchar *full_path = g_build_filename(trusted_dir, filename, NULL);
 		gchar *cmd = g_strdup_printf("minisign -Vm %s -x %s -p %s",
 					     manifest_path, sig_path, full_path);
-		verified = (system(cmd) == 0);
+		if (system(cmd) == 0) {
+			verified = TRUE;
+			verified_key = g_strdup(filename);
+		}
+		
 		g_free(cmd);
 		g_free(full_path);
 	}
@@ -61,7 +66,7 @@ static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
 		status_message = "Signature verification successful!";
 
 
-		g_print("mu-update-daemon: Signature verified with key: %s\n", filename);
+		g_print("mu-update-daemon: Signature verified with key: %s\n", verified_key);
 		g_print("mu-update-daemon: Signature valid. Proceeding with update...\n");
 
 		// Here you would typically call the update process, e.g., applying the update.
