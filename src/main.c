@@ -1,4 +1,5 @@
 #include <gio/gio.h>
+#include <systemd/sd-daemon.h>
 #include "mu_update.h"
 
 // Forward declaration
@@ -18,6 +19,9 @@ static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpoi
 		g_printerr("Failed to export D-Bus interface\n");
 		exit(1);
 	}
+
+	//Notify systemd that the service is ready
+	sd_notify(0, "READY=1");
 
 	g_print("mu-update-daemon: D-Bus interface exported and ready.\n");
 }

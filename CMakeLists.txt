@@ -6,6 +6,7 @@ set(CMAKE_C_STANDARD 99)
 # Find GLib and GIO packages
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED gio-2.0>=2.60 glib-2.0>=2.60 gio-unix-2.0)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
 # Define paths for generated code and D-Bus XML
 set(GENERATED_DIR ${CMAKE_SOURCE_DIR}/src/generated)
@@ -40,14 +41,20 @@ add_dependencies(mu-update-daemon generate_dbus_code)
 # Include directories
 target_include_directories(mu-update-daemon PRIVATE
     ${GLIB_INCLUDE_DIRS}
+    ${SYSTEMD_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/generated
 )
 
 # Compiler flags
-target_compile_options(mu-update-daemon PRIVATE ${GLIB_CFLAGS_OTHER})
+target_compile_options(mu-update-daemon PRIVATE
+    ${GLIB_CFLAGS_OTHER}
+)
 
 # Link libraries
-target_link_libraries(mu-update-daemon PRIVATE ${GLIB_LIBRARIES})
+target_link_libraries(mu-update-daemon PRIVATE
+    ${GLIB_LIBRARIES}
+    ${SYSTEMD_LIBRARIES}
+)
 
 # Define minimum GLib version (optional but safe)
 add_definitions(-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_60)
