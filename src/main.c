@@ -1,111 +1,154 @@
+#include "mu_manifest.h"
+#include "mu_update.h"
+#include "mu_verify.h"
+#include "mu_apply_update.h"
 #include <gio/gio.h>
 #include <systemd/sd-daemon.h>
-#include "mu_update.h"
 
-// Forward declaration
 static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
 					 GDBusMethodInvocation *invocation,
 					 const gchar *inbox_path);
 
-// Callback when the bus is acquired
-static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpointer user_data)
-{
+/* ------------------------------------------------------------------------ */
+static void on_bus_acquired(GDBusConnection *connection, const gchar *name,
+			    gpointer user_data) {
 	MuUpdateOrgMuUpdate *skeleton = mu_update_org_mu_update_skeleton_new();
 
-	g_signal_connect(skeleton, "handle-trigger-update", G_CALLBACK(on_handle_trigger_update), NULL);
+	g_signal_connect(skeleton, "handle-trigger-update",
+			 G_CALLBACK(on_handle_trigger_update), NULL);
 
-	if (!g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(skeleton), connection, "/org/mu/Update", NULL))
-	{
+	if (!g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(
+						  skeleton),
+					      connection, "/org/mu/Update",
+					      NULL)) {
 		g_printerr("Failed to export D-Bus interface\n");
 		exit(1);
 	}
 
-	//Notify systemd that the service is ready
+	// Notify systemd that the service is ready
 	sd_notify(0, "READY=1");
 
 	g_print("mu-update-daemon: D-Bus interface exported and ready.\n");
 }
 
-// Handler for TriggerUpdate method call
+/* ------------------------------------------------------------------------ */
 static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
-			 GDBusMethodInvocation *invocation,
-			 const gchar *inbox_path)
-{
+					 GDBusMethodInvocation *invocation,
+					 const gchar *inbox_path) {
 	g_print("Received TriggerUpdate with inbox: %s\n", inbox_path);
 
-	gchar *manifest_path = g_build_filename(inbox_path, "manifest.json", NULL);
-	gchar *sig_path = g_build_filename(inbox_path, "manifest.json.minisig", NULL);
-
+	gchar *manifest_path = g_build_filename(inbox_path, "manifest.json",
+						NULL);
+	gchar *sig_path = g_build_filename(inbox_path, "manifest.json.minisig",
+					   NULL);
 	const gchar *trusted_dir = "/etc/mu/trusted.d";
-	GDir *dir = g_dir_open(trusted_dir, 0, NULL);
-	const gchar *filename;
-	gboolean verified = FALSE;
+
 	gboolean success = FALSE;
 	gchar *verified_key = NULL;
+	const gchar *status_message = "Unknown error";
 
-	while ((filename = g_dir_read_name(dir)) && !verified)
-	{
-		if (!g_str_has_suffix(filename, ".pub")) {
-			continue;
-		}				
-
-		gchar *full_path = g_build_filename(trusted_dir, filename, NULL);
-		gchar *cmd = g_strdup_printf("minisign -Vm %s -x %s -p %s",
-					     manifest_path, sig_path, full_path);
-		if (system(cmd) == 0) {
-			verified = TRUE;
-			verified_key = g_strdup(filename);
-		}
-		
-		g_free(cmd);
-		g_free(full_path);
+	if (!verify_manifest_signature(manifest_path, sig_path, trusted_dir,
+				       &verified_key)) {
+		g_printerr(
+		    "mu-update-daemon: Failed to verify manifest signature.\n");
+		status_message = "Signature verification failed!";
+		goto cleanup;
 	}
 
-	g_dir_close(dir);
+	g_print("mu-update-daemon: Signature verified with key: %s\n",
+		verified_key);
 
-	const gchar *status_message;
-	
-	if (verified)
-	{
-		status_message = "Signature verification successful!";
+	// Parse the manifest
+	struct manifest m;
+	int iret = parse_manifest(manifest_path, &m);
+	if (iret < 0) {
+		status_message = "Failed to parse manifest!";
+	} else {
+		g_print("mu-update-daemon: Manifest parsed "
+			"successfully.\n");
+		g_print("Version: %s\n", m.version);
+		g_print("Timestamp: %s\n", m.timestamp);
+		g_print("Description: %s\n", m.description);
+		g_print("Key ID: %s\n", m.key_id);
+		g_print("File Count: %d\n", m.file_count);
+
+		for (int i = 0; i < m.file_count; ++i) {
+			g_print("File %d of %d:\n", i + 1, m.file_count);
+			g_print("  Path: %s\n", m.files[i].path);
+			g_print("  SHA256: %s\n", m.files[i].sha256);
+			g_print("  Payload Name: %s\n",
+				m.files[i].payload_name);
+
+			const gchar *name = m.files[i].payload_name;
+			gchar *full = g_build_filename(inbox_path, name, NULL);
+
+			if (!verify_file_sha256(full, m.files[i].sha256)) {
+				status_message = "Payload hash mismatch!";
+				g_free(full);
+				goto cleanup;
+			}
+			g_free(full);
+
+			if (!apply_payload(inbox_path, m.files[i].payload_name,
+					   m.files[i].path)) {
+				status_message = "Failed to apply payload!";
+				goto cleanup;
+			}
+		}
+
+		if (m.script_present) {
+			g_print("Script Name: %s\n", m.script.script_name);
+			g_print("Script SHA256: %s\n", m.script.sha256);
+
+			gchar *script_full = g_build_filename(
+			    inbox_path, m.script.script_name, NULL);
+			if (!verify_file_sha256(script_full, m.script.sha256)) {
+				status_message = "Script hash mismatch!";
+				g_free(script_full);
+				goto cleanup;
+			}
+
+			if (!run_post_script(script_full)) {
+				status_message = "Failed to run post script!";
+				g_free(script_full);
+				goto cleanup;
+			}
+
+			g_free(script_full);
 
 
-		g_print("mu-update-daemon: Signature verified with key: %s\n", verified_key);
-		g_print("mu-update-daemon: Signature valid. Proceeding with update...\n");
-
-		// Here you would typically call the update process, e.g., applying the update.
-		// For this example, we will just simulate success.
-		// In a real application, you would handle the update logic here.
-
+		} else {
+			g_print("Script is not present.\n");
+		}
 
 		success = TRUE;
 	}
-	else
-	{
-		status_message = "Signature verification failed! Update aborted.";
-		g_printerr("mu-update-daemon: Signature invalid. Aborting update.\n");
+
+cleanup:
+	// Clean up resources
+	if (manifest_path) {
+		g_free(manifest_path);
+	}
+	if (sig_path) {
+		g_free(sig_path);
+	}
+	if (verified_key) {
+		g_free(verified_key);
 	}
 
 	// No cast needed here!
 	mu_update_org_mu_update_complete_trigger_update(
-	    (MuUpdateOrgMuUpdate *)skeleton,
-	    invocation,
-	    success,
+	    (MuUpdateOrgMuUpdate *)skeleton, invocation, success,
 	    status_message);
 	return TRUE;
 }
 
-int main(int argc, char *argv[])
-{
-	guint owner_id = g_bus_own_name(
-	    G_BUS_TYPE_SYSTEM,
-	    "org.mu.Update",
-	    G_BUS_NAME_OWNER_FLAGS_NONE,
-	    on_bus_acquired,
-	    NULL,
-	    NULL,
-	    NULL,
-	    NULL);
+/* ------------------------------------------------------------------------ */
+int main(int argc, char *argv[]) {
+	guint owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.mu.Update",
+					G_BUS_NAME_OWNER_FLAGS_NONE,
+					on_bus_acquired, NULL, NULL, NULL,
+					NULL);
 
 	g_print("mu-update-daemon: Running...\n");
 

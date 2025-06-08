@@ -7,6 +7,14 @@ set(CMAKE_C_STANDARD 99)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED gio-2.0>=2.60 glib-2.0>=2.60 gio-unix-2.0)
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+pkg_check_modules(OPENSSL REQUIRED openssl)
+
+find_path(CJSON_INCLUDE_DIR cjson/cJSON.h)
+find_library(CJSON_LIBRARY cjson)
+
+if(NOT CJSON_INCLUDE_DIR OR NOT CJSON_LIBRARY)
+    message(FATAL_ERROR "Could not find cJSON")
+endif()
 
 # Define paths for generated code and D-Bus XML
 set(GENERATED_DIR ${CMAKE_SOURCE_DIR}/src/generated)
@@ -33,6 +41,9 @@ add_custom_target(generate_dbus_code ALL
 # Define the executable
 add_executable(mu-update-daemon
     src/main.c
+    src/mu_manifest.c
+    src/mu_verify.c
+    src/mu_apply_update.c
     ${GENERATED_SRC}
 )
 
@@ -42,6 +53,8 @@ add_dependencies(mu-update-daemon generate_dbus_code)
 target_include_directories(mu-update-daemon PRIVATE
     ${GLIB_INCLUDE_DIRS}
     ${SYSTEMD_INCLUDE_DIRS}
+    ${CJSON_INCLUDE_DIR}
+    ${OPENSSL_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/generated
 )
 
@@ -54,6 +67,8 @@ target_compile_options(mu-update-daemon PRIVATE
 target_link_libraries(mu-update-daemon PRIVATE
     ${GLIB_LIBRARIES}
     ${SYSTEMD_LIBRARIES}
+    ${CJSON_LIBRARY}
+    ${OPENSSL_LIBRARIES}
 )
 
 # Define minimum GLib version (optional but safe)
