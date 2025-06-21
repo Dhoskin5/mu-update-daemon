@@ -29,13 +29,14 @@ static gboolean is_path_safe(const gchar *path) {
 	return TRUE;
 }
 
+/* ------------------------------------------------------------------------ */
 static gboolean is_tar_safe(const gchar *tar_path) {
 	gchar *argv[] = {"tar", "-tf", (gchar *)tar_path, NULL};
 	GError *error = NULL;
 	gchar *stdout_buf = NULL;
 
-	if (!g_spawn_sync(NULL, argv, NULL, G_SPAWN_DEFAULT, NULL,
-	                  NULL, &stdout_buf, NULL, NULL, &error)) {
+	if (!g_spawn_sync(NULL, argv, NULL, G_SPAWN_DEFAULT, NULL, NULL,
+			  &stdout_buf, NULL, NULL, &error)) {
 		g_printerr("Error listing tar contents: %s\n", error->message);
 		g_clear_error(&error);
 		return FALSE;
@@ -46,7 +47,9 @@ static gboolean is_tar_safe(const gchar *tar_path) {
 		const gchar *entry = lines[i];
 
 		if (entry[0] == '/' || strstr(entry, "..")) {
-			g_printerr("mu-apply-update: Tar contains unsafe entry: %s\n", entry);
+			g_printerr(
+			    "mu-apply-update: Tar contains unsafe entry: %s\n",
+			    entry);
 			g_strfreev(lines);
 			g_free(stdout_buf);
 			return FALSE;
@@ -85,7 +88,8 @@ gboolean apply_payload(const gchar *inbox_path, const gchar *payload_name,
 	}
 
 	if (!is_tar_safe(full_src)) {
-		g_printerr("mu-apply-update: Payload tar contains unsafe paths\n");
+		g_printerr(
+		    "mu-apply-update: Payload tar contains unsafe paths\n");
 		return FALSE;
 	}
 

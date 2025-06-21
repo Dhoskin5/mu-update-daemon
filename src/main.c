@@ -1,7 +1,7 @@
+#include "mu_apply_update.h"
 #include "mu_manifest.h"
 #include "mu_update.h"
 #include "mu_verify.h"
-#include "mu_apply_update.h"
 #include <gio/gio.h>
 #include <systemd/sd-daemon.h>
 
@@ -115,7 +115,6 @@ static gboolean on_handle_trigger_update(MuUpdateOrgMuUpdateSkeleton *skeleton,
 			}
 
 			g_free(script_full);
-
 
 		} else {
 			g_print("Script is not present.\n");
